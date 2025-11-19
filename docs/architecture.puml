@@ -1,0 +1,132 @@
+@startuml Artifact Retrieval Service Architecture
+
+!theme plain
+skinparam componentStyle rectangle
+
+title Artifact Retrieval Service - Architecture Diagram
+
+package "Artifact Retrieval Service" {
+    
+    ' ============================================
+    ' Data Models
+    ' ============================================
+    rectangle "ArtifactDescriptor" as ArtifactDescriptor
+    rectangle "TraceableArtifact" as TraceableArtifact
+    
+    ' ============================================
+    ' API Subsystem
+    ' ============================================
+    package "ApiSubsystem" {
+        component "FastAPI Gateway" as FastAPIGateway
+        component "Request Mapping" as RequestMapping
+        component "Request Validation" as RequestValidation
+        component "Correlation ID Middleware" as CorrelationMiddleware
+    }
+    
+    ' ============================================
+    ' GitLab Subsystem
+    ' ============================================
+    package "GitLabSubsystem" {
+        interface GitLabPort
+        component "GitLab Client" as GitLabClient
+        component "GitLab Client Config" as GitLabConfig
+        component "HTTP Client" as HTTPClient
+    }
+    
+    ' ============================================
+    ' Monitoring Subsystem
+    ' ============================================
+    package "MonitoringSubsystem" {
+        component "Structured Logging" as StructuredLogging
+        component "Health Endpoints" as HealthEndpoints
+    }
+    
+    ' ============================================
+    ' Configuration
+    ' ============================================
+    component "Configuration" as Config
+    
+    ' ============================================
+    ' External Systems
+    ' ============================================
+    component "GitLab Server" as GitLabServer
+    database "File System" as FileSystem
+    
+    ' ============================================
+    ' Dependencies
+    ' ============================================
+    FastAPIGateway --> RequestMapping : uses
+    FastAPIGateway --> RequestValidation : uses
+    FastAPIGateway --> CorrelationMiddleware : uses
+    FastAPIGateway --> GitLabClient : dependency injection
+    FastAPIGateway --> StructuredLogging : uses
+    FastAPIGateway --> HealthEndpoints : provides
+    
+    RequestMapping --> ArtifactDescriptor : creates
+    RequestMapping --> TraceableArtifact : maps to
+    
+    RequestValidation --> ArtifactDescriptor : validates
+    
+    GitLabClient ..|> GitLabPort : implements
+    GitLabClient --> GitLabConfig : uses
+    GitLabClient --> HTTPClient : uses
+    GitLabClient --> ArtifactDescriptor : receives
+    GitLabClient --> TraceableArtifact : returns
+    GitLabClient --> FileSystem : saves files
+    
+    HTTPClient --> GitLabServer : HTTP requests
+    
+    Config --> GitLabConfig : provides config
+    Config --> StructuredLogging : provides log_level
+    
+    CorrelationMiddleware --> StructuredLogging : sets context
+    
+    ' ============================================
+    ' Data Flow
+    ' ============================================
+    FastAPIGateway ..> RequestMapping : request_data
+    RequestMapping ..> ArtifactDescriptor : creates
+    ArtifactDescriptor ..> RequestValidation : validates
+    ArtifactDescriptor ..> GitLabClient : retrieves
+    GitLabClient ..> GitLabServer : HTTP GET
+    GitLabServer ..> GitLabClient : file content
+    GitLabClient ..> FileSystem : saves file
+    GitLabClient ..> TraceableArtifact : returns
+    TraceableArtifact ..> RequestMapping : maps to response
+    RequestMapping ..> FastAPIGateway : JSON response
+    
+    note right of ArtifactDescriptor
+        Data Model:
+        - repository: str
+        - artifactPath: str
+        - versionSelector: str
+    end note
+    
+    note right of TraceableArtifact
+        Data Model:
+        - artifactId: str
+        - mimeType: Optional[str]
+        - filePath: Optional[str]
+    end note
+    
+    note right of GitLabClient
+        Downloads file content
+        from GitLab and saves
+        to local filesystem
+    end note
+    
+    note right of FileSystem
+        Directory structure:
+        downloads/{repo}/{version}/{path}
+    end note
+    
+    note right of StructuredLogging
+        JSON logs with:
+        - correlationId
+        - artifactId
+        - timestamp
+    end note
+
+}
+
+@enduml

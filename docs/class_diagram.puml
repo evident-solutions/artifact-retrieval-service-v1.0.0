@@ -1,0 +1,136 @@
+@startuml Class Diagram
+
+!theme plain
+skinparam classAttributeIconSize 0
+skinparam classFontSize 10
+
+title Artifact Retrieval Service - Class Diagram
+
+package "Data Models" {
+    class ArtifactDescriptor {
+        +repository: str
+        +artifactPath: str
+        +versionSelector: str
+        --
+        +__init__(repository, artifactPath, versionSelector)
+    }
+    
+    class TraceableArtifact {
+        +artifactId: str
+        +mimeType: Optional[str]
+        +filePath: Optional[str]
+        --
+        +__init__(artifactId, mimeType=None, filePath=None)
+    }
+}
+
+package "Configuration" {
+    class Settings {
+        +gitlab_base_url: str
+        +gitlab_access_token: str
+        +download_directory: str
+        +app_name: str
+        +app_version: str
+        +log_level: str
+        --
+        +Config
+    }
+    
+    class GitLabClientConfig {
+        +base_url: str
+        +access_token: str
+        +download_directory: str
+        --
+        +__init__(base_url, access_token, download_directory)
+    }
+}
+
+package "GitLab Client" {
+    interface GitLabPort {
+        +retrieve_artifact(descriptor: ArtifactDescriptor): TraceableArtifact
+    }
+    
+    class GitLabClient {
+        -config: GitLabClientConfig
+        -_client: httpx.AsyncClient | None
+        --
+        +__init__(config: GitLabClientConfig)
+        +__aenter__()
+        +__aexit__(exc_type, exc_val, exc_tb)
+        +retrieve_artifact(descriptor: ArtifactDescriptor): TraceableArtifact
+        -_retrieve_artifact_internal(descriptor: ArtifactDescriptor): TraceableArtifact
+        -_save_artifact_content(descriptor, content, mime_type): str
+        -_get_extension_from_mime_type(mime_type: str): str
+    }
+}
+
+package "API Layer" {
+    class FastAPIApp {
+        +app: FastAPI
+        +correlation_id_var: ContextVar
+        --
+        +correlation_id_middleware(request, call_next)
+        +get_gitlab_client(): GitLabClient
+        +health_check()
+        +readiness_check()
+        +retrieve_artifact(request_data, gitlab_client, correlation_id)
+    }
+}
+
+package "Mapping & Validation" {
+    class MappingFunctions {
+        +map_request_to_descriptor(request_data: Dict) -> ArtifactDescriptor
+        +map_artifact_to_response(artifact: TraceableArtifact) -> Dict
+    }
+    
+    class ValidationFunctions {
+        +validate_artifact_descriptor(descriptor: ArtifactDescriptor): None
+    }
+}
+
+package "Logging" {
+    class LoggingConfig {
+        +setup_logging(log_level: str): None
+        +get_logger(name: str): BoundLogger
+        +add_correlation_id(logger, method_name, event_dict): Dict
+        +add_artifact_id(logger, method_name, event_dict): Dict
+    }
+}
+
+' Relationships
+GitLabClient ..|> GitLabPort : implements
+GitLabClient --> GitLabClientConfig : uses
+GitLabClient --> ArtifactDescriptor : receives
+GitLabClient --> TraceableArtifact : returns
+
+FastAPIApp --> GitLabClient : dependency injection
+FastAPIApp --> MappingFunctions : uses
+FastAPIApp --> ValidationFunctions : uses
+FastAPIApp --> LoggingConfig : uses
+FastAPIApp --> Settings : uses
+
+MappingFunctions --> ArtifactDescriptor : creates
+MappingFunctions --> TraceableArtifact : maps
+
+ValidationFunctions --> ArtifactDescriptor : validates
+
+Settings --> GitLabClientConfig : provides config
+
+LoggingConfig --> FastAPIApp : provides logger
+
+note right of GitLabClient
+    Downloads files from GitLab
+    and saves to local filesystem
+    in structured directory
+end note
+
+note right of FastAPIApp
+    Main application entry point
+    - Handles HTTP requests
+    - Dependency injection
+    - Error handling
+    - Logging
+end note
+
+@enduml
+

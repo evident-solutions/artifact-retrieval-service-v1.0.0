@@ -1,0 +1,105 @@
+@startuml Artifact Retrieval Sequence Diagram
+
+!theme plain
+skinparam sequenceMessageAlign center
+skinparam sequenceArrowThickness 2
+
+title Artifact Retrieval Service - Sequence Diagram
+
+actor "Client" as Client
+participant "FastAPI Gateway" as Gateway
+participant "Request Mapping" as Mapping
+participant "Request Validation" as Validation
+participant "GitLab Client" as GitLabClient
+participant "HTTP Client" as HTTPClient
+participant "GitLab Server" as GitLabServer
+participant "File System" as FileSystem
+participant "Structured Logger" as Logger
+
+== Request Flow ==
+
+Client -> Gateway: POST /api/v1/artifacts\n{repository, artifactPath, versionSelector}
+activate Gateway
+
+Gateway -> Gateway: Extract correlation ID\n(or generate UUID)
+Gateway -> Logger: Log request with correlationId
+activate Logger
+Logger --> Gateway
+deactivate Logger
+
+Gateway -> Mapping: map_request_to_descriptor(request_data)
+activate Mapping
+Mapping -> Mapping: Create ArtifactDescriptor
+Mapping --> Gateway: ArtifactDescriptor
+deactivate Mapping
+
+alt Validation Error (Pydantic)
+    Gateway -> Gateway: Raise HTTPException(422)
+    Gateway --> Client: 422 Unprocessable Entity
+else Valid Request
+    Gateway -> Validation: validate_artifact_descriptor(descriptor)
+    activate Validation
+    Validation -> Validation: Check repository format\nCheck empty fields
+    alt Business Logic Validation Error
+        Validation --> Gateway: ValueError
+        Gateway --> Client: 400 Bad Request
+    else Valid Descriptor
+        Validation --> Gateway: OK
+        deactivate Validation
+        
+        Gateway -> Logger: Log retrieval start
+        activate Logger
+        Logger --> Gateway
+        deactivate Logger
+        
+        Gateway -> GitLabClient: retrieve_artifact(descriptor)
+        activate GitLabClient
+        
+        GitLabClient -> HTTPClient: GET /api/v4/projects/.../files/.../raw
+        activate HTTPClient
+        HTTPClient -> GitLabServer: HTTP Request with Bearer token
+        activate GitLabServer
+        
+        alt GitLab Error (404, 500, etc.)
+            GitLabServer --> HTTPClient: HTTP Error
+            HTTPClient --> GitLabClient: HTTPStatusError
+            GitLabClient --> Gateway: HTTPStatusError
+            Gateway --> Client: 500 Internal Server Error
+        else Success
+            GitLabServer --> HTTPClient: File Content (bytes)
+            deactivate GitLabServer
+            HTTPClient --> GitLabClient: Response with content
+            deactivate HTTPClient
+            
+            GitLabClient -> GitLabClient: Extract MIME type from headers
+            GitLabClient -> GitLabClient: Generate artifactId
+            GitLabClient -> FileSystem: Save file content
+            activate FileSystem
+            FileSystem -> FileSystem: Create directory structure\n{downloads}/{repo}/{version}/{path}
+            FileSystem -> FileSystem: Write file content
+            FileSystem --> GitLabClient: File path
+            deactivate FileSystem
+            
+            GitLabClient -> GitLabClient: Create TraceableArtifact
+            GitLabClient --> Gateway: TraceableArtifact\n(artifactId, mimeType, filePath)
+            deactivate GitLabClient
+            
+            Gateway -> Logger: Log success with artifactId
+            activate Logger
+            Logger --> Gateway
+            deactivate Logger
+            
+            Gateway -> Mapping: map_artifact_to_response(artifact)
+            activate Mapping
+            Mapping --> Gateway: Response dict
+            deactivate Mapping
+            
+            Gateway --> Client: 200 OK\n{artifactId, mimeType, filePath}
+        end
+    end
+end
+
+deactivate Gateway
+
+@enduml
+

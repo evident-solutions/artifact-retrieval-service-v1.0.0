@@ -1,0 +1,83 @@
+@startuml Component Diagram
+
+!theme plain
+skinparam componentStyle rectangle
+skinparam linetype ortho
+
+title Artifact Retrieval Service - Component Diagram
+
+package "External Interfaces" {
+    interface AgentApiPort
+    interface GitLabPort
+}
+
+package "Artifact Retrieval Service" {
+    
+    component "main.py" as Main
+    component "models.py" as Models
+    component "mapping.py" as Mapping
+    component "validation.py" as Validation
+    component "gitlab_client.py" as GitLabClient
+    component "config.py" as Config
+    component "logging_config.py" as Logging
+}
+
+package "External Dependencies" {
+    component "FastAPI" as FastAPI
+    component "httpx" as HTTPX
+    component "structlog" as StructLog
+    component "pydantic" as Pydantic
+}
+
+database "GitLab Server" as GitLab
+database "File System" as FileSystem
+
+' Relationships
+Main ..|> AgentApiPort : implements
+Main --> Models : uses
+Main --> Mapping : uses
+Main --> Validation : uses
+Main --> GitLabClient : dependency injection
+Main --> Config : uses
+Main --> Logging : uses
+
+Mapping --> Models : creates/maps
+Validation --> Models : validates
+GitLabClient ..|> GitLabPort : implements
+GitLabClient --> Models : uses
+GitLabClient --> Config : uses
+
+Main --> FastAPI : uses
+Main --> Pydantic : uses
+Main --> StructLog : uses
+GitLabClient --> HTTPX : uses
+Logging --> StructLog : uses
+
+GitLabClient --> GitLab : HTTP requests
+GitLabClient --> FileSystem : saves files
+
+note right of Main
+    FastAPI Application
+    - Gateway routing
+    - Request handling
+    - Error handling
+    - Dependency injection
+end note
+
+note right of GitLabClient
+    GitLab Integration
+    - HTTP client
+    - Authentication
+    - File download
+    - Error handling
+end note
+
+note right of FileSystem
+    Download Structure:
+    downloads/
+    └── {repository}/
+        └── {version}/
+            └── {file_path}
+end note
+
+@enduml
