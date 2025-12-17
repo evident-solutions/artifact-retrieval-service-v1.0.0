@@ -3,6 +3,7 @@ FastAPI application main module.
 
 Implements the AgentApiPort interface and provides health/readiness endpoints.
 """
+
 import uuid
 from contextvars import ContextVar
 from typing import Annotated
@@ -36,11 +37,11 @@ async def correlation_id_middleware(request: Request, call_next):
     """Middleware to extract and set correlation ID from headers."""
     correlation_id = request.headers.get("X-Correlation-ID") or str(uuid.uuid4())
     correlation_id_var.set(correlation_id)
-    
+
     # Add correlation ID to structlog context
     structlog.contextvars.clear_contextvars()
     structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
-    
+
     response = await call_next(request)
     response.headers["X-Correlation-ID"] = correlation_id
     return response
@@ -52,7 +53,7 @@ def get_gitlab_client() -> GitLabClient:
 
     Returns:
         Configured GitLabClient instance.
-    
+
     Raises:
         ValueError: If GitLab access token is not configured.
     """
@@ -115,7 +116,7 @@ async def retrieve_artifact(
     try:
         # Validate descriptor (business logic validation)
         validate_artifact_descriptor(request_data)
-        
+
         # Add artifact context to logs (will be set after retrieval)
         logger.info(
             "Retrieving artifact",
@@ -123,11 +124,11 @@ async def retrieve_artifact(
             artifact_path=request_data.artifactPath,
             version_selector=request_data.versionSelector,
         )
-        
+
         # Retrieve artifact from GitLab
         # Note: retrieve_artifact handles its own context manager if needed
         artifact = await gitlab_client.retrieve_artifact(request_data)
-        
+
         # Add artifact ID to log context
         structlog.contextvars.bind_contextvars(artifactId=artifact.artifactId)
         logger.info(
@@ -135,10 +136,10 @@ async def retrieve_artifact(
             artifact_id=artifact.artifactId,
             mime_type=artifact.mimeType,
         )
-        
+
         # Return artifact directly (FastAPI will serialize TraceableArtifact automatically)
         return artifact
-        
+
     except HTTPException:
         # Re-raise HTTPExceptions (like 422 from validation errors)
         raise
@@ -147,7 +148,7 @@ async def retrieve_artifact(
         raise HTTPException(status_code=400, detail=str(e))
     except httpx.HTTPStatusError as e:
         status_code = e.response.status_code
-        
+
         # Preserve client error status codes (4xx) and map server errors (5xx) appropriately
         if 400 <= status_code < 500:
             # Client errors: preserve the original status code
@@ -155,10 +156,14 @@ async def retrieve_artifact(
             if status_code == 401:
                 error_detail = "GitLab authentication failed. Please check your access token is valid and has the required permissions."
             elif status_code == 404:
-                error_detail = "Artifact not found. Please verify the repository, path, and version selector."
+                error_detail = (
+                    "Artifact not found. Please verify the repository, path, and version selector."
+                )
             elif status_code == 403:
-                error_detail = "Access forbidden. The token may not have permission to access this repository."
-            
+                error_detail = (
+                    "Access forbidden. The token may not have permission to access this repository."
+                )
+
             logger.error(
                 "GitLab HTTP client error",
                 status_code=status_code,
@@ -192,16 +197,15 @@ async def retrieve_artifact(
 
 # OpenTelemetry/Prometheus metrics (commented for future implementation)
 # from prometheus_client import Counter, Histogram
-# 
+#
 # artifact_requests_total = Counter(
 #     'artifact_requests_total',
 #     'Total number of artifact requests',
 #     ['repository', 'status']
 # )
-# 
+#
 # artifact_request_duration = Histogram(
 #     'artifact_request_duration_seconds',
 #     'Duration of artifact requests',
 #     ['repository']
 # )
-

@@ -3,6 +3,7 @@ Request validation logic for the API subsystem.
 
 Validates ArtifactDescriptor objects according to business rules.
 """
+
 import re
 
 from artifact_retrieval_service.models import ArtifactDescriptor
@@ -29,13 +30,10 @@ def validate_artifact_descriptor(descriptor: ArtifactDescriptor) -> None:
 
     # Validate repository format: should contain at least one slash (org/repo)
     if "/" not in descriptor.repository:
-        raise ValueError(
-            f"repository must be in format 'org/repo', got: {descriptor.repository}"
-        )
+        raise ValueError(f"repository must be in format 'org/repo', got: {descriptor.repository}")
 
     # Additional validation: repository should not contain invalid characters
     if not re.match(r"^[\w\-\.]+/[\w\-\.]+$", descriptor.repository):
         raise ValueError(
             f"repository format is invalid, expected 'org/repo' format: {descriptor.repository}"
         )
-

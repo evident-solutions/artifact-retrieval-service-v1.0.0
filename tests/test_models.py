@@ -1,6 +1,7 @@
 """
 Tests for data models: ArtifactDescriptor and TraceableArtifact.
 """
+
 import pytest
 from pydantic import ValidationError
 
@@ -92,4 +93,3 @@ class TestTraceableArtifact:
         """Test that missing artifactId field raises ValidationError."""
         with pytest.raises(ValidationError):
             TraceableArtifact(mimeType="application/json")
-

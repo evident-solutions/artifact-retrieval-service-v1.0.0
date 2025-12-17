@@ -12,6 +12,7 @@ To run integration tests:
 To skip integration tests (default):
     pytest tests/test_integration.py -v -m "not integration"
 """
+
 import os
 import pytest
 from artifact_retrieval_service.gitlab_client import GitLabClient, GitLabClientConfig
@@ -27,10 +28,10 @@ def gitlab_config():
     """Create GitLab configuration from environment variables."""
     base_url = os.getenv("GITLAB_BASE_URL", "https://gitlab.com")
     access_token = os.getenv("GITLAB_ACCESS_TOKEN", "")
-    
+
     if not access_token:
         pytest.skip("GITLAB_ACCESS_TOKEN not set - skipping integration tests")
-    
+
     return GitLabClientConfig(
         base_url=base_url,
         access_token=access_token,
@@ -66,10 +67,10 @@ async def test_retrieve_existing_file(gitlab_config, test_repository, test_file_
         artifactPath=test_file_path,
         versionSelector=test_branch,
     )
-    
+
     async with GitLabClient(gitlab_config) as client:
         result = await client.retrieve_artifact(descriptor)
-    
+
     assert isinstance(result, TraceableArtifact)
     assert result.artifactId is not None
     assert result.artifactId == f"{test_repository}:{test_file_path}:{test_branch}"
@@ -89,10 +90,10 @@ async def test_retrieve_file_with_different_branch(gitlab_config, test_repositor
                 artifactPath=test_file_path,
                 versionSelector=branch,
             )
-            
+
             async with GitLabClient(gitlab_config) as client:
                 result = await client.retrieve_artifact(descriptor)
-            
+
             assert isinstance(result, TraceableArtifact)
             assert result.artifactId == f"{test_repository}:{test_file_path}:{branch}"
             break  # Success, no need to try other branches
@@ -110,13 +111,13 @@ async def test_retrieve_nonexistent_file(gitlab_config, test_repository, test_br
         artifactPath="this/file/does/not/exist.txt",
         versionSelector=test_branch,
     )
-    
+
     from httpx import HTTPStatusError
-    
+
     async with GitLabClient(gitlab_config) as client:
         with pytest.raises(HTTPStatusError) as exc_info:
             await client.retrieve_artifact(descriptor)
-        
+
         # Should be 404 Not Found
         assert exc_info.value.response.status_code == 404
 
@@ -127,19 +128,19 @@ async def test_retrieve_file_with_tag(gitlab_config, test_repository, test_file_
     # This test will be skipped if no tags are available
     # You can set GITLAB_TEST_TAG environment variable to specify a tag
     test_tag = os.getenv("GITLAB_TEST_TAG", "")
-    
+
     if not test_tag:
         pytest.skip("GITLAB_TEST_TAG not set - skipping tag test")
-    
+
     descriptor = ArtifactDescriptor(
         repository=test_repository,
         artifactPath=test_file_path,
         versionSelector=test_tag,
     )
-    
+
     async with GitLabClient(gitlab_config) as client:
         result = await client.retrieve_artifact(descriptor)
-    
+
     assert isinstance(result, TraceableArtifact)
     assert result.artifactId == f"{test_repository}:{test_file_path}:{test_tag}"
 
@@ -150,19 +151,19 @@ async def test_retrieve_file_with_commit_sha(gitlab_config, test_repository, tes
     # This test will be skipped if no commit SHA is provided
     # You can set GITLAB_TEST_COMMIT_SHA environment variable
     test_commit = os.getenv("GITLAB_TEST_COMMIT_SHA", "")
-    
+
     if not test_commit:
         pytest.skip("GITLAB_TEST_COMMIT_SHA not set - skipping commit SHA test")
-    
+
     descriptor = ArtifactDescriptor(
         repository=test_repository,
         artifactPath=test_file_path,
         versionSelector=test_commit,
     )
-    
+
     async with GitLabClient(gitlab_config) as client:
         result = await client.retrieve_artifact(descriptor)
-    
+
     assert isinstance(result, TraceableArtifact)
     assert result.artifactId == f"{test_repository}:{test_file_path}:{test_commit}"
 
@@ -178,7 +179,7 @@ async def test_retrieve_file_in_subdirectory(gitlab_config, test_repository, tes
         "requirements.txt",
         "pyproject.toml",
     ]
-    
+
     for test_path in test_paths:
         try:
             descriptor = ArtifactDescriptor(
@@ -186,10 +187,10 @@ async def test_retrieve_file_in_subdirectory(gitlab_config, test_repository, tes
                 artifactPath=test_path,
                 versionSelector=test_branch,
             )
-            
+
             async with GitLabClient(gitlab_config) as client:
                 result = await client.retrieve_artifact(descriptor)
-            
+
             assert isinstance(result, TraceableArtifact)
             assert result.artifactId == f"{test_repository}:{test_path}:{test_branch}"
             break  # Success
@@ -207,7 +208,7 @@ async def test_mime_type_detection(gitlab_config, test_repository, test_branch):
         ("README.md", "text/markdown"),  # May vary
         (".gitignore", None),  # May not have MIME type
     ]
-    
+
     for file_path, expected_mime in test_files:
         try:
             descriptor = ArtifactDescriptor(
@@ -215,10 +216,10 @@ async def test_mime_type_detection(gitlab_config, test_repository, test_branch):
                 artifactPath=file_path,
                 versionSelector=test_branch,
             )
-            
+
             async with GitLabClient(gitlab_config) as client:
                 result = await client.retrieve_artifact(descriptor)
-            
+
             assert isinstance(result, TraceableArtifact)
             # MIME type may or may not be set depending on GitLab response
             if expected_mime:
@@ -237,13 +238,12 @@ async def test_invalid_repository(gitlab_config):
         artifactPath="README.md",
         versionSelector="main",
     )
-    
+
     from httpx import HTTPStatusError
-    
+
     async with GitLabClient(gitlab_config) as client:
         with pytest.raises(HTTPStatusError) as exc_info:
             await client.retrieve_artifact(descriptor)
-        
+
         # Should be 404 Not Found
         assert exc_info.value.response.status_code == 404
-

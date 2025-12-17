@@ -1,6 +1,7 @@
 """
 Structured logging configuration with correlationId and artifactId support.
 """
+
 import logging
 import sys
 from typing import Any, Dict
@@ -63,4 +64,3 @@ def get_logger(name: str) -> structlog.BoundLogger:
         Configured structlog logger.
     """
     return structlog.get_logger(name)
-

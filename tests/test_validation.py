@@ -1,6 +1,7 @@
 """
 Tests for request validation logic.
 """
+
 import pytest
 
 from artifact_retrieval_service.models import ArtifactDescriptor
@@ -69,4 +70,3 @@ class TestValidateArtifactDescriptor:
         )
         # Should not raise
         validate_artifact_descriptor(descriptor)
-

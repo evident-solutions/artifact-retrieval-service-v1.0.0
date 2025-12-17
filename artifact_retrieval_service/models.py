@@ -3,6 +3,7 @@ Data models for the Artifact Retrieval Service.
 
 Defines ArtifactDescriptor and TraceableArtifact models.
 """
+
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -43,5 +44,6 @@ class TraceableArtifact(BaseModel):
 
     artifactId: str = Field(..., description="Unique identifier for the artifact")
     mimeType: Optional[str] = Field(None, description="MIME type of the artifact content")
-    filePath: Optional[str] = Field(None, description="Local file path where the artifact was downloaded")
-
+    filePath: Optional[str] = Field(
+        None, description="Local file path where the artifact was downloaded"
+    )

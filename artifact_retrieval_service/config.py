@@ -1,6 +1,7 @@
 """
 Application configuration using environment variables.
 """
+
 from pydantic_settings import BaseSettings
 
 
@@ -28,4 +29,3 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
-

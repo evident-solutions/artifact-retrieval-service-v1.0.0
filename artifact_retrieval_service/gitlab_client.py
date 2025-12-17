@@ -4,6 +4,7 @@ GitLab client for retrieving artifacts.
 Implements the GitLabPort interface for outgoing ArtifactDescriptor requests
 and incoming TraceableArtifact responses.
 """
+
 import os
 from pathlib import Path
 from typing import Protocol
@@ -101,7 +102,9 @@ class GitLabClient:
         # Otherwise use existing client
         return await self._retrieve_artifact_internal(descriptor)
 
-    async def _retrieve_artifact_internal(self, descriptor: ArtifactDescriptor) -> TraceableArtifact:
+    async def _retrieve_artifact_internal(
+        self, descriptor: ArtifactDescriptor
+    ) -> TraceableArtifact:
         """Internal method to retrieve artifact (assumes client is initialized)."""
         # Construct GitLab API URL for file content
         # Format: /api/v4/projects/{project}/repository/files/{file_path}/raw?ref={ref}
@@ -121,7 +124,9 @@ class GitLabClient:
 
         # Generate artifactId (in a real implementation, this might come from GitLab metadata)
         # For now, we'll create a deterministic ID based on the descriptor
-        artifact_id = f"{descriptor.repository}:{descriptor.artifactPath}:{descriptor.versionSelector}"
+        artifact_id = (
+            f"{descriptor.repository}:{descriptor.artifactPath}:{descriptor.versionSelector}"
+        )
 
         # Download and save the file content
         file_path_local = await self._save_artifact_content(
@@ -155,15 +160,15 @@ class GitLabClient:
         """
         # Create download directory structure: downloads/{repository}/{versionSelector}/{file_path}
         download_dir = Path(self.config.download_directory).resolve()
-        
+
         # Sanitize repository name for filesystem (replace / with _)
         repo_safe = descriptor.repository.replace("/", "_")
         version_safe = descriptor.versionSelector.replace("/", "_").replace("\\", "_")
-        
+
         # Create directory structure
         artifact_dir = download_dir / repo_safe / version_safe
         artifact_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Get filename from artifact path
         file_name = os.path.basename(descriptor.artifactPath)
         if not file_name:
@@ -173,7 +178,7 @@ class GitLabClient:
             else:
                 extension = ".txt"
             file_name = f"artifact{extension}"
-        
+
         # Handle subdirectories in artifact path
         artifact_subdir = os.path.dirname(descriptor.artifactPath)
         if artifact_subdir:
@@ -183,10 +188,10 @@ class GitLabClient:
             file_path = subdir_path / file_name
         else:
             file_path = artifact_dir / file_name
-        
+
         # Save file content
         file_path.write_bytes(content)
-        
+
         # Return absolute path as string
         return str(file_path.resolve())
 
@@ -208,4 +213,3 @@ class GitLabClient:
             "image/gif": ".gif",
         }
         return mime_to_ext.get(mime_type, ".bin")
-

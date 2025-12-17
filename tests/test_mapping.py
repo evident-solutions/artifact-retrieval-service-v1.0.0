@@ -1,6 +1,7 @@
 """
 Tests for request/response mapping logic.
 """
+
 import pytest
 
 from artifact_retrieval_service.models import ArtifactDescriptor, TraceableArtifact
@@ -59,4 +60,3 @@ class TestMapArtifactToResponse:
             "mimeType": None,
             "filePath": None,
         }
-
