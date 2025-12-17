@@ -1,10 +1,10 @@
 # Artifact Retrieval Service
 
-A well-tested, production-ready Python service for retrieving artifacts from GitLab, implementing the ArtifactRetrievalService as described in the SysML model.
+A well-tested, production-ready Python service for retrieving artifacts from GitLab, implementing the ArtifactRetrievalService as described in the SysML model `ArtifactRetrievalServiceProduct_minimal_fully_traced_v3.sysml` under `docs`.
 
 ## Features
 
-- **Agent API Port**: RESTful API for retrieving artifacts (implements `AgentApiPort` interface)
+- **Agent API Port**: RESTful API for retrieving artifacts (implements `AgentApiPort` interface, defined in the sysml model in `docs`)
 - **GitLab Integration**: Secure HTTP client with authentication for GitLab API
 - **Request Validation**: Comprehensive validation of artifact descriptors
 - **Structured Logging**: JSON logs with `correlationId` and `artifactId` tracking

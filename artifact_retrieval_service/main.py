@@ -7,18 +7,14 @@ import uuid
 from contextvars import ContextVar
 from typing import Annotated
 from fastapi import FastAPI, HTTPException, Depends, Request, Header
-from fastapi.exceptions import RequestValidationError
 import httpx
 import structlog
-
-from pydantic import ValidationError
 
 from artifact_retrieval_service.config import settings
 from artifact_retrieval_service.gitlab_client import GitLabClient, GitLabClientConfig
 from artifact_retrieval_service.logging_config import setup_logging, get_logger
 from artifact_retrieval_service.models import ArtifactDescriptor, TraceableArtifact
 from artifact_retrieval_service.validation import validate_artifact_descriptor
-from artifact_retrieval_service.mapping import map_request_to_descriptor, map_artifact_to_response
 
 # Setup logging
 setup_logging(settings.log_level)
@@ -96,9 +92,9 @@ async def readiness_check():
     return {"status": "ready"}
 
 
-@app.post("/api/v1/artifacts", response_model=dict)
+@app.post("/api/v1/artifacts", response_model=TraceableArtifact)
 async def retrieve_artifact(
-    request_data: dict,
+    request_data: ArtifactDescriptor,
     gitlab_client: Annotated[GitLabClient, Depends(get_gitlab_client)],
     correlation_id: Annotated[str | None, Header(alias="X-Correlation-ID", required=False)] = None,
 ):
@@ -106,39 +102,31 @@ async def retrieve_artifact(
     Retrieve an artifact from GitLab (AgentApiPort implementation).
 
     Args:
-        request_data: Request body containing repository, artifactPath, and versionSelector.
+        request_data: Artifact descriptor with repository, artifactPath, and versionSelector.
         gitlab_client: Injected GitLabClient dependency.
         correlation_id: Optional correlation ID from header.
 
     Returns:
-        JSON response with artifactId and optional mimeType.
+        TraceableArtifact with artifactId, optional mimeType, and filePath.
 
     Raises:
         HTTPException: If validation or retrieval fails.
     """
     try:
-        # Map request to domain model
-        try:
-            descriptor = map_request_to_descriptor(request_data)
-        except ValidationError as e:
-            # Return 422 for request validation errors (missing/invalid fields)
-            logger.warning("Request validation error", error=str(e))
-            raise HTTPException(status_code=422, detail=str(e))
-        
         # Validate descriptor (business logic validation)
-        validate_artifact_descriptor(descriptor)
+        validate_artifact_descriptor(request_data)
         
         # Add artifact context to logs (will be set after retrieval)
         logger.info(
             "Retrieving artifact",
-            repository=descriptor.repository,
-            artifact_path=descriptor.artifactPath,
-            version_selector=descriptor.versionSelector,
+            repository=request_data.repository,
+            artifact_path=request_data.artifactPath,
+            version_selector=request_data.versionSelector,
         )
         
         # Retrieve artifact from GitLab
         # Note: retrieve_artifact handles its own context manager if needed
-        artifact = await gitlab_client.retrieve_artifact(descriptor)
+        artifact = await gitlab_client.retrieve_artifact(request_data)
         
         # Add artifact ID to log context
         structlog.contextvars.bind_contextvars(artifactId=artifact.artifactId)
@@ -148,9 +136,8 @@ async def retrieve_artifact(
             mime_type=artifact.mimeType,
         )
         
-        # Map to response
-        response_data = map_artifact_to_response(artifact)
-        return response_data
+        # Return artifact directly (FastAPI will serialize TraceableArtifact automatically)
+        return artifact
         
     except HTTPException:
         # Re-raise HTTPExceptions (like 422 from validation errors)
@@ -159,15 +146,39 @@ async def retrieve_artifact(
         logger.warning("Validation error", error=str(e))
         raise HTTPException(status_code=400, detail=str(e))
     except httpx.HTTPStatusError as e:
-        logger.error(
-            "GitLab HTTP error",
-            status_code=e.response.status_code,
-            error=str(e),
-        )
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to retrieve artifact from GitLab: {e.response.status_code}",
-        )
+        status_code = e.response.status_code
+        
+        # Preserve client error status codes (4xx) and map server errors (5xx) appropriately
+        if 400 <= status_code < 500:
+            # Client errors: preserve the original status code
+            error_detail = f"GitLab API error: {status_code}"
+            if status_code == 401:
+                error_detail = "GitLab authentication failed. Please check your access token is valid and has the required permissions."
+            elif status_code == 404:
+                error_detail = "Artifact not found. Please verify the repository, path, and version selector."
+            elif status_code == 403:
+                error_detail = "Access forbidden. The token may not have permission to access this repository."
+            
+            logger.error(
+                "GitLab HTTP client error",
+                status_code=status_code,
+                error=str(e),
+            )
+            raise HTTPException(
+                status_code=status_code,
+                detail=error_detail,
+            )
+        else:
+            # Server errors (5xx): map to 502 Bad Gateway (upstream server error)
+            logger.error(
+                "GitLab HTTP server error",
+                status_code=status_code,
+                error=str(e),
+            )
+            raise HTTPException(
+                status_code=502,
+                detail=f"GitLab server error: {status_code}",
+            )
     except httpx.RequestError as e:
         logger.error("GitLab request error", error=str(e))
         raise HTTPException(
